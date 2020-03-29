@@ -1,0 +1,124 @@
+---
+title: 'COVID19 Analysis'
+author: "Joël Meili"
+date: "3/29/2020"
+output: 
+  pdf_document:
+    fig_height: 5
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+library(gridExtra)
+library(broom)
+library(kableExtra)
+
+source("load_data.R")
+
+allData <- loadData("time_series_covid19_confirmed_global.csv", "CumConfirmed") %>%
+  inner_join(loadData("time_series_covid19_deaths_global.csv", "CumDeaths")) %>%
+  inner_join(loadData("time_series_covid19_recovered_global.csv", "CumRecovered"))
+
+allData_cleaned <- na.omit(allData)
+
+allData_cleaned$`CumDeaths` <- NULL
+
+allData_cleaned$`CumRecovered` <- NULL
+
+countries <- c("China", "Italy", "Korea, South", "Singapore", "Spain", "Switzerland", "US")
+
+allData_cleaned_visualize <- allData_cleaned %>% filter(`Province/State` == "<all>" & 
+                                                          `Country/Region` %in% countries)
+
+allData_cleaned_visualize$`Province/State` <- NULL
+
+allData_china_australia <- allData_cleaned %>% filter(`Country/Region` 
+                                                      %in% c("Australia", "China")) %>%
+  group_by(date, `Country/Region`) %>% transmute(CumConfirmed = sum(CumConfirmed))
+
+allData_cleaned_visualize <- allData_cleaned_visualize %>% bind_rows(allData_china_australia)
+
+colnames(allData_cleaned_visualize) <- c("Country", "Date", "Confirmed Cases")
+
+lock_down <- as.Date("2020-03-09")
+```
+
+## b & c)
+Visualization of the development of the number of confirmed cases - absolute and in log-scale - for the following countries:
+
+- China
+- Italy
+- South Korea
+- Singapore
+- Spain
+- Switzerland
+- USA
+
+```{r}
+ allData_cleaned_visualize %>% filter(Country %in% countries) %>%  
+  ggplot(aes(x = Date, y = `Confirmed Cases`, colour = Country)) +
+  geom_line() + geom_vline(xintercept = lock_down) + 
+  geom_vline(xintercept = as.Date("2020-03-16")) + theme_base()
+
+ allData_cleaned_visualize %>% filter(Country %in% countries) %>%  
+  ggplot(aes(x = Date, y = `Confirmed Cases`, colour = Country)) +
+  geom_line() + geom_vline(xintercept = lock_down) + 
+  geom_vline(xintercept = as.Date("2020-03-16")) + scale_y_log10() +
+   theme_base()
+```
+
+## d)
+Determination of the time period for doubling the cases for each country before lock down was ordered by the government and only considering the 7 days prior to the lock down on 2020-03-09:
+
+Bases on the results shown in the table below one can see that the measures taken by China seem to work as the estimate of days until the number of confirmed cases are doubled is far beyond what other countries are experiencing, for example for Switzerland the linear regressions suggests that the number of cases prior to the lock down seem to double every other day.
+
+```{r}
+train <- allData_cleaned_visualize %>% filter(Date <= lock_down & Date >= lock_down - 7)
+
+train <- train %>% group_by(Country) %>% mutate(t = as.integer(Date - min(Date)))
+
+fitted_models <- train %>% group_by(Country) %>% do(model = lm(log2(`Confirmed Cases`) ~ t, data = .))
+
+fitted_models %>% tidy(model) %>% filter(term == "t") %>% select(Country, estimate) %>% transmute("Days until cases are doubled" = round(1/estimate, 2)) %>%
+  kable() %>% kable_styling()
+```
+
+## e)
+If the growth persists as calculated in the above section, Switzerland would have more infected people than who actually live in the country. The growth would be enormous and absolutely devastating. The predictions seem to be negligible for China as the the growth rate has plummeted to a point where the growth rate is in a equilibrium state which could mean that the recovery and death rate are equal to the growth rate. 
+
+```{r}
+predictions <- fitted_models %>% rowwise() %>% mutate(pred = list(predict(model, newdata = data.frame(t = 8:40)))) %>% tidy(pred) %>%
+  mutate(x = 2^x, names = as.integer(names), Date = lock_down + names, "Confirmed Cases Predicted" = ceiling(x), names = NULL, x = NULL)
+
+predictions %>% ggplot(aes(x = Date, y = `Confirmed Cases Predicted`, colour = Country)) + 
+  geom_line() + theme_base()
+
+predictions %>% ggplot(aes(x = Date, y = `Confirmed Cases Predicted`, colour = Country)) + 
+  geom_line() + scale_y_log10() + theme_base()
+```
+
+## f)
+In the following figures one can observe that fortunately for almost all countries the predictions do not hold and show that the measures taken by the various governments have reduced the growth rate significantly to what was observed earlier. Not surprisingly, the US are on par with the predictions which agrees with the denial and incompetence to cancel mass events such as Mardi Gras or Spring Break.
+
+```{r}
+allData_cleaned_visualize_pred <- allData_cleaned_visualize %>% 
+  inner_join(predictions, by = c("Country", "Date")) %>% gather("Actual/Predicted", "Cases", 3:4)
+
+allData_cleaned_visualize_pred %>% ggplot(aes(x = Date, y = Cases, colour = Country)) +
+  geom_line(aes(linetype = `Actual/Predicted`)) + theme_base()
+
+allData_cleaned_visualize_pred %>% ggplot(aes(x = Date, y = Cases, colour = Country)) +
+  geom_line(aes(linetype = `Actual/Predicted`)) +  scale_y_log10() +
+  theme_base()
+```
+
+
+
+
+
+
