@@ -11,12 +11,13 @@ library(shiny)
 library(deSolve)
 library(ggplot2)
 library(ggthemes)
+library(gridExtra)
 library(kableExtra)
 
 # Load data
-source("load_data.R")
+source("~/COVID19/load_data.R")
 
-countries <- c("Italy", "Iran", "Japan", "Korea, South", "Singapore", "Spain", "Switzerland", "US")
+countries <- c("Italy", "Iran", "Japan", "Korea, South", "Russia", "Singapore", "Switzerland", "United Kingdom", "US")
 
 N <- 10000
 
@@ -51,6 +52,31 @@ SIR_estimation <- function(true_infected, true_removed, parameters, state, times
     alpha*l1 + (1 - alpha)*l2
 }
 
+state <- c(S = N - 1/N, I = 1/N, R = 0)
+
+estim <- allData %>% group_by(`Country/Region`) %>% group_modify(~{nlminb(rep(0, 2), objective = SIR_estimation, true_infected = .x$Infected, true_removed = .x$Removed,
+                                                                          state = state, times = 1:nrow(.x))$par %>%
+        tibble::enframe(name = "param", value = "value") %>% spread(param, value)}) %>% ungroup()
+
+colnames(estim)[2:3] <- c("beta", "gamma")
+
+estim$R0 <- N*estim$beta/estim$gamma
+
+forecast <- 300
+
+sim <- estim %>% group_by(`Country/Region`) %>% group_map(function(.x, group_info){
+    SIR_simulation(state = state, times = 1:forecast, func = SIR, parameters = c(.x$beta, .x$gamma)) %>% as.data.frame() %>%
+        mutate(`Country/Region` = group_info$`Country/Region`, date = (allData %>% filter(`Country/Region` == group_info$`Country/Region`) %>%
+                                                                           select(date) %>% pull() %>% min()) + 0:(forecast - 1)) %>% select(-time)
+}) %>% bind_rows()
+
+
+df <- allData %>% right_join(sim, on = c("date", "Country/Region")) %>%
+    transmute(date = date, `Country/Region` = `Country/Region`, Susceptible = Susceptible, "Susceptible Simulated" = S , Infected = Infected, "Infected Simulated" = I, Removed = Removed, "Removed Simulated" = R) %>% 
+    gather(SIR, Cases, 3:8) %>% separate(SIR, into = c("SIR", "Actual/Simulated"))
+
+df$`Actual/Simulated` <- ifelse(is.na(df$`Actual/Simulated`), "Actual", df$`Actual/Simulated`)
+
 ui <- fluidPage(
     
     titlePanel("COVID19 SIR analysis"),
@@ -64,9 +90,11 @@ ui <- fluidPage(
         mainPanel(
             tabsetPanel(type = "tabs",
                         tabPanel("Active COVID19 cases", plotOutput("plot1")),
+                        tabPanel("Active COVID19 cases across countries", plotOutput("plot2")),
                         tabPanel("Estimated SIR parameters", htmlOutput("estim")),
-                        tabPanel("Estimated vs. Actual data plot", plotOutput("plot2")),
-                        tabPanel("Estimated vs. Actual data (log-scaled)", plotOutput("plot3"))
+                        tabPanel("Estimated vs. Actual data plot", plotOutput("plot3")),
+                        tabPanel("Estimated vs. Actual data (log-scaled)", plotOutput("plot4")),
+                        tabPanel("Simulated number of infected cases across countries", plotOutput("plot5"))
             )
         )
     )
@@ -78,55 +106,37 @@ server <- function(input, output) {
     })
     
     get_df <- reactive({
-        allData %>% filter(`Country/Region` == get_country()) %>% select(-`Country/Region`)
-        })
-    
-    estimate_sir <- reactive({
-        df <- get_df()
-        state <- c(S = N, I = 1/N, R = 0)
-        times <- 1:nrow(df)
-        estim <- nlminb(rep(0, 2), objective = SIR_estimation, true_infected = df$Infected, true_removed = df$Removed,
-                        state = state, times = times, lower = rep(0, 2))$par
-        estim
+        df %>% filter(`Country/Region` == get_country()) %>% select(-`Country/Region`)
     })
     
     output$estim <- renderText({
-        estim <- estimate_sir()
-        df <- data.frame(estim[1], estim[2], N*estim[1]/estim[2])
-        colnames(df) <- c("beta", "gamma", "R0")
-        kable(df, digits = 10) %>% kable_styling(fixed_thead = TRUE)
-    })
-    
-    sir_simulation <- reactive({
-        df <- get_df()
-        estim <- estimate_sir()
-        forecast <- 300
-        sim <- SIR_simulation(state = c(S = N, I = 1/N, R = 0), times = 1:forecast, func = SIR, parameters = estim) %>% as_data_frame()
-        sim$time <- NULL
-        sim$date <- min(df$date) + 0:(forecast - 1)
-        print(df %>% right_join(sim, on = "date"))
-        df <- df %>% right_join(sim, on = "date") %>%
-            transmute(date = date, Susceptible = Susceptible, "Susceptible Simulated" = S , Infected = Infected, "Infected Simulated" = I, Removed = Removed, "Removed Simulated" = R) %>% 
-            gather(SIR, Cases, 2:7) %>% separate(SIR, into = c("SIR", "Actual/Simulated"))
-        df$`Actual/Simulated` <- ifelse(is.na(df$`Actual/Simulated`), "Actual", df$`Actual/Simulated`)
-        df
+        estim %>% filter(`Country/Region` == get_country()) %>% kable(digits = 10) %>% kable_styling(fixed_thead = TRUE)
     })
     
     output$plot1 <- renderPlot({
-        df <- get_df()
-        df %>% ggplot(aes(x = date, y = Infected)) + geom_line() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 10'000")
+        get_df() %>% filter(`Actual/Simulated` == "Actual" & SIR == "Infected") %>% na.omit() %>% ggplot(aes(x = date, y = Cases)) + geom_line() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 10'000")
     })
     
     output$plot2 <- renderPlot({
-        df <- sir_simulation()
-        df %>% ggplot(aes(x = date, y = Cases, colour = SIR)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
-                         theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Calculated SIR based on per 10'000")
+        grid.arrange(
+            df %>% filter(`Actual/Simulated` == "Actual" & SIR == "Infected") %>% na.omit() %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + geom_line() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 10'000"),
+            df %>% filter(`Actual/Simulated` == "Actual" & SIR == "Infected") %>% na.omit() %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + geom_line() + scale_y_log10() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 10'000"),
+            nrow = 2)
     })
     
     output$plot3 <- renderPlot({
-        df <- sir_simulation()
-        df %>% ggplot(aes(x = date, y = Cases, colour = SIR)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
+        get_df() %>% ggplot(aes(x = date, y = Cases, colour = SIR)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
+            theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Calculated SIR based on per 10'000")
+    })
+    
+    output$plot4 <- renderPlot({
+        get_df() %>% ggplot(aes(x = date, y = Cases, colour = SIR)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
             scale_y_log10() + theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Calculated SIR based on per 10'000")
+    })
+    
+    output$plot5 <- renderPlot({
+        df %>% filter(SIR == "Infected" & `Actual/Simulated` == "Simulated") %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
+            theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Simulated # of infected cases across countries based on per 10'000")
     })
 }
  
