@@ -19,7 +19,8 @@ library(kableExtra)
 # Load data
 source("load_data.R")
 
-countries <- c("Italy", "Iran", "Japan", "Korea, South", "Russia", "Singapore", "Switzerland", "United Kingdom", "US")
+countries <- c("Austria", "Germany", "Italy", "Iran", "Japan", "Korea, South", "Netherlands", "Portugal", "Russia", "Singapore", "Spain", 
+               "Switzerland", "United Kingdom", "US")
 
 countries_population <- data.frame(countries) %>% rowwise() %>% 
     mutate(N = wb(country = countrycode(countries, origin = "country.name", destination = "iso2c"), indicator = "SP.POP.TOTL")$value[1])
@@ -30,53 +31,54 @@ allData <- loadData("time_series_covid19_confirmed_global.csv", "CumConfirmed") 
     inner_join(loadData("time_series_covid19_deaths_global.csv", "CumDeaths")) %>%
     inner_join(loadData("time_series_covid19_recovered_global.csv", "CumRecovered")) %>%
     na.omit() %>% filter(`Province/State` == "<all>" & `Country/Region` %in% countries) %>%
-    group_by(date, `Country/Region`) %>% transmute(Infected = sum(CumConfirmed), Removed = sum(CumDeaths + CumRecovered)) %>%
-    mutate(Infected = Infected - Removed) %>% filter(Infected != 0) %>% inner_join(countries_population, on = `Country/Region`) %>%
-    transmute(Susceptible = N - Infected - Removed, Infected = Infected, Removed = Removed, N = N) %>% ungroup()
+    group_by(date, `Country/Region`) %>% transmute(Infected = sum(CumConfirmed), Recovered = sum(CumRecovered), Deaths = sum(CumDeaths)) %>%
+    mutate(Infected = Infected - Recovered - Deaths) %>% filter(Infected != 0) %>% inner_join(countries_population, on = `Country/Region`) %>%
+    transmute(Susceptible = N - Infected - Recovered - Deaths, Infected = Infected, Recovered = Recovered, Deaths = Deaths, N = N) %>% ungroup()
 
 SIR <- function(t, state, parameters) {
     with(as.list(c(state, parameters)), {
         dS <- -beta*I*S
-        dI <- beta*I*S - gamma*I
+        dI <- beta*I*S - gamma*I - delta*I
         dR <- gamma*I
+        dD <- delta*I
         
-        list(c(dS, dI, dR))
+        list(c(dS, dI, dR, dD))
     })
 }
 
 SIR_simulation <- function(state, times, func, parameters) {
-    out <- ode(y = state, times = times, func = SIR, parms = c(beta = parameters[1], gamma = parameters[2]))
+    out <- ode(y = state, times = times, func = SIR, parms = c(beta = parameters[1], gamma = parameters[2], delta = parameters[3]))
     out
 }
 
-SIR_estimation <- function(true_infected, true_removed, parameters, state, times) {
+SIR_estimation <- function(true_infected, true_recovered, true_dead, parameters, state, times) {
     out <- SIR_simulation(state = state, times = times, func = SIR, parameters = parameters)
     l1 <- sqrt(mean((true_infected - out[, "I"])^2))
-    l2 <- sqrt(mean((true_removed - out[, "R"])^2))
-    alpha <- 0.5
-    alpha*l1 + (1 - alpha)*l2
+    l2 <- sqrt(mean((true_recovered - out[, "R"])^2))
+    l3 <- sqrt(mean((true_dead - out[, "D"])^2))
+    l1 + l2 + l3
 }
 
-estim <- allData %>% group_by(`Country/Region`) %>% group_modify(~{optim(rep(0, 2), fn = SIR_estimation, true_infected = .x$Infected, true_removed = .x$Removed,
-                                                                          state = c(S = max(.x$N) - 1, I = 1, R = 0), times = 1:nrow(.x))$par %>%
+estim <- allData %>% group_by(`Country/Region`) %>% group_modify(~{optim(rep(0, 3), fn = SIR_estimation, true_infected = .x$Infected, true_recovered = .x$Recovered,
+                                                                         true_dead = .x$Deaths, state = c(S = max(.x$N) - 1, I = 1, R = 0, D = 0), times = 1:nrow(.x))$par %>%
         tibble::enframe(name = "param", value = "value") %>% spread(param, value)}) %>% ungroup() %>% inner_join(countries_population, on = `Country/Region`)
 
-colnames(estim)[2:3] <- c("beta", "gamma")
+colnames(estim)[2:4] <- c("beta", "gamma", "delta")
 
-estim$R0 <- estim$N*estim$beta/estim$gamma
+estim$R0 <- estim$N*estim$beta/(estim$gamma + estim$delta)
 
 forecast <- 300
 
 sim <- estim %>% group_by(`Country/Region`) %>% group_map(function(.x, group_info){
-    SIR_simulation(state = c(S = max(.x$N) - 1, I = 1, R = 0), times = 1:forecast, func = SIR, parameters = c(.x$beta, .x$gamma)) %>% as.data.frame() %>%
+    SIR_simulation(state = c(S = max(.x$N) - 1, I = 1, R = 0, D = 0), times = 1:forecast, func = SIR, parameters = c(.x$beta, .x$gamma, .x$delta)) %>% as.data.frame() %>%
         mutate(`Country/Region` = group_info$`Country/Region`, date = (allData %>% filter(`Country/Region` == group_info$`Country/Region`) %>%
                                                                            select(date) %>% pull() %>% min()) + 0:(forecast - 1)) %>% select(-time)
 }) %>% bind_rows()
 
 df <- allData %>% right_join(sim, on = c("date", "Country/Region")) %>%
-    transmute(date = date, `Country/Region` = `Country/Region`, Susceptible = Susceptible, "Susceptible Simulated" = S , Infected = Infected, "Infected Simulated" = I, Removed = Removed, "Removed Simulated" = R) %>% 
-    gather(SIR, Cases, 3:8) %>% separate(SIR, into = c("SIR", "Actual/Simulated")) %>% inner_join(countries_population, on = `Country/Region`) %>%
-    mutate(Cases = Cases/N*1e5)
+    transmute(date = date, `Country/Region` = `Country/Region`, Susceptible = Susceptible, "Susceptible Simulated" = S , Infected = Infected, "Infected Simulated" = I, Recovered = Recovered, "Recovered Simulated" = R,
+              Deaths = Deaths, "Deaths Simulated" = D) %>%  gather(SIR, Cases, 3:10) %>% separate(SIR, into = c("SIR", "Actual/Simulated")) %>% 
+    inner_join(countries_population, on = `Country/Region`) %>%  mutate(Cases = Cases/N*1e5)
 
 df$`Actual/Simulated` <- ifelse(is.na(df$`Actual/Simulated`), "Actual", df$`Actual/Simulated`)
 
