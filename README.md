@@ -5,11 +5,13 @@ An attempt to model the COVID19 data from the [Johns Hopkins Github Repository](
 ![](sird.jpg)
 
 ## SIRD model equations
-$$\frac{dS}{dt} = -\beta I(t) S(t)$$
-$$\frac{dI}{dt} = \beta I(t) S(t) - \gamma I - \delta I$$
-$$\frac{dR}{dt} = \gamma I$$
-$$\frac{dD}{dt} = \delta I$$
-$$R_0 = N \frac{\beta}{\gamma + \delta}$$
+\begin{equation}
+\frac{dS}{dt} = -\beta I(t) S(t) \\
+\frac{dI}{dt} = \beta I(t) S(t) - \gamma I - \delta I \\
+\frac{dR}{dt} = \gamma I \\
+\frac{dD}{dt} = \delta I \\
+R_0 = N \frac{\beta}{\gamma + \delta}
+\end{equation}
 where N is the size of the population which is assumed to be constant.
 
 ## Model estimation
