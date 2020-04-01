@@ -75,11 +75,11 @@ ui <- fluidPage(
             textOutput("date_range"),
             tabsetPanel(type = "tabs",
                        tabPanel("Active COVID19 cases", plotOutput("plot1")),
-                       tabPanel("Active COVID19 cases across countries", plotOutput("plot2")),
+                       tabPanel("Active COVID19 cases across countries", plotOutput("plot2"), plotOutput("plot3")),
                        tabPanel("Estimated SIR parameters", htmlOutput("estim")),
-                       tabPanel("Estimated vs. Actual data plot", plotOutput("plot3")),
-                       tabPanel("Estimated vs. Actual data (log-scaled)", plotOutput("plot4")),
-                       tabPanel("Simulated number of infected cases across countries", plotOutput("plot5"))
+                       tabPanel("Estimated vs. Actual data plot", plotOutput("plot4")),
+                       tabPanel("Estimated vs. Actual data (log-scaled)", plotOutput("plot5")),
+                       tabPanel("Simulated number of infected cases across countries", plotOutput("plot6"))
             )
         )
     )
@@ -143,25 +143,26 @@ server <- function(input, output) {
     })
     
     output$plot2 <- renderPlot({
-        grid.arrange(
-            get_df() %>% filter(`Actual/Simulated` == "Actual" & SIR == "Infected") %>% na.omit() %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + 
-                geom_line() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 100'000"),
-            get_df() %>% filter(`Actual/Simulated` == "Actual" & SIR == "Infected") %>% na.omit() %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + 
-                geom_line() + scale_y_log10() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 100'000"),
-            nrow = 2)
-    })
+        get_df() %>% filter(`Actual/Simulated` == "Actual" & SIR == "Infected") %>% na.omit() %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + 
+            geom_line() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 100'000")
+        })
     
     output$plot3 <- renderPlot({
-        get_df() %>% filter(`Country/Region` == get_country()) %>% ggplot(aes(x = date, y = Cases, colour = SIR)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
-            theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Calculated SIR per 100'000")
+        get_df() %>% filter(`Actual/Simulated` == "Actual" & SIR == "Infected") %>% na.omit() %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + 
+            geom_line() + scale_y_log10() + theme_base() + xlab("Date") + ylab("# of Infections") + ggtitle("Number of infections per 100'000")
     })
     
     output$plot4 <- renderPlot({
         get_df() %>% filter(`Country/Region` == get_country()) %>% ggplot(aes(x = date, y = Cases, colour = SIR)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
-            scale_y_log10() + theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Calculated SIR per 100'000")
+            theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Calculated SIR per 100'000")
     })
     
     output$plot5 <- renderPlot({
+        get_df() %>% filter(`Country/Region` == get_country()) %>% ggplot(aes(x = date, y = Cases, colour = SIR)) + geom_line(aes(linetype = `Actual/Simulated`)) + 
+            scale_y_log10() + theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Calculated SIR per 100'000")
+    })
+    
+    output$plot6 <- renderPlot({
         get_df() %>% filter(SIR == "Infected" & `Actual/Simulated` == "Simulated") %>% ggplot(aes(x = date, y = Cases, colour = `Country/Region`)) + geom_line() +
             theme_base() + xlab("Date") + ylab("# of Cases") + ggtitle("Simulated # of infected cases across countries per 100'000")
     })
