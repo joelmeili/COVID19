@@ -5,14 +5,11 @@ An attempt to model the COVID19 data from the [Johns Hopkins Github Repository](
 ![](sird.jpg)
 
 ## SIRD model equations
-
-```math
-\frac{dS}{dt} = -\beta I(t) S(t)
-\frac{dI}{dt} = \beta I(t) S(t) - \gamma I - \delta I \\
-\frac{dR}{dt} = \gamma I \\
-\frac{dD}{dt} = \delta I \\
-R_0 = N \frac{\beta}{\gamma + \delta}
-```
+![](http://latex.codecogs.com/gif.latex?%5Cfrac%7BdS%7D%7Bdt%7D%20%3D%20-%5Cbeta%20I%28t%29%20S%28t%29) <br/>
+![](http://latex.codecogs.com/gif.latex?%5Cfrac%7BdI%7D%7Bdt%7D%20%3D%20%5Cbeta%20I%28t%29%20S%28t%29%20-%20%5Cgamma%20I%20-%20%5Cdelta%20I) <br/>
+![](http://latex.codecogs.com/gif.latex?%5Cfrac%7BdR%7D%7Bdt%7D%20%3D%20%5Cgamma%20I) <br/>
+![](http://latex.codecogs.com/gif.latex?%5Cfrac%7BdD%7D%7Bdt%7D%20%3D%20%5Cdelta%20I) <br/>
+![](http://latex.codecogs.com/gif.latex?R_0%20%3D%20N%20%5Cfrac%7B%5Cbeta%7D%7B%5Cgamma%20&plus;%20%5Cdelta%7D)
 
 where N is the size of the population which is assumed to be constant.
 
