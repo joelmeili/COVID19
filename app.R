@@ -61,7 +61,7 @@ SIR_estimation <- function(true_infected, true_recovered, true_dead, parameters,
 
 ui <- fluidPage(
     
-    titlePanel("COVID19 SIR analysis"),
+    titlePanel("COVID19 SIRD analysis"),
     
     sidebarLayout(
         
