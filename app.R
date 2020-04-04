@@ -69,7 +69,7 @@ ui <- fluidPage(
             dateRangeInput("date_range", "Estimation interval:", start = min(allData$date), end = max(allData$date), 
             min = min(allData$date), max = max(allData$date)),
             selectInput("country", "Country:", countries),
-            numericInput("forecast", "Number of days to be forecasted:", value = 300, min = 1, max = 730), interval = 1),
+            numericInput("forecast", "Number of days to be forecasted:", value = 60, min = 1, max = 730), interval = 1),
         
         mainPanel(
             textOutput("date_range"),
