@@ -7,14 +7,16 @@
 #    http://shiny.rstudio.com/
 #
 
-library(shiny)
-library(countrycode)
-library(wbstats)
-library(deSolve)
-library(ggplot2)
-library(ggthemes)
-library(gridExtra)
-library(kableExtra)
+suppressPackageStartupMessages({
+  library(shiny)
+  library(countrycode)
+  library(wbstats)
+  library(deSolve)
+  library(ggplot2)
+  library(ggthemes)
+  library(gridExtra)
+  library(kableExtra)
+})
 
 # Load data
 source("load_data.R")
@@ -27,13 +29,15 @@ countries_population <- data.frame(countries) %>% rowwise() %>%
 countries_population$countries <- as.character(countries_population$countries)
 colnames(countries_population) <- c("Country/Region", "N")
 
-allData <- loadData("time_series_covid19_confirmed_global.csv", "CumConfirmed") %>%
-    inner_join(loadData("time_series_covid19_deaths_global.csv", "CumDeaths")) %>%
-    inner_join(loadData("time_series_covid19_recovered_global.csv", "CumRecovered")) %>%
+all_data <- load_data("time_series_covid19_confirmed_global.csv", "CumConfirmed") %>%
+    inner_join(load_data("time_series_covid19_deaths_global.csv", "CumDeaths")) %>%
+    inner_join(load_data("time_series_covid19_recovered_global.csv", "CumRecovered")) %>%
     na.omit() %>% filter(`Province/State` == "<all>" & `Country/Region` %in% countries) %>%
     group_by(date, `Country/Region`) %>% transmute(Infected = sum(CumConfirmed), Recovered = sum(CumRecovered), Deaths = sum(CumDeaths)) %>%
     mutate(Infected = Infected - Recovered - Deaths) %>% filter(Infected != 0) %>% inner_join(countries_population, on = `Country/Region`) %>%
     transmute(Susceptible = N - Infected - Recovered - Deaths, Infected = Infected, Recovered = Recovered, Deaths = Deaths, N = N) %>% ungroup()
+
+all_data <- all_data %>% filter(date <= "2020-04-01") %>% filter(date >= "2020-02-01")
 
 SIR <- function(t, state, parameters) {
     with(as.list(c(state, parameters)), {
@@ -66,8 +70,8 @@ ui <- fluidPage(
     sidebarLayout(
         
         sidebarPanel(
-            dateRangeInput("date_range", "Estimation interval:", start = min(allData$date), end = max(allData$date), 
-            min = min(allData$date), max = max(allData$date)),
+            dateRangeInput("date_range", "Estimation interval:", start = min(all_data$date), end = max(all_data$date), 
+            min = min(all_data$date), max = max(all_data$date)),
             selectInput("country", "Country:", countries),
             numericInput("forecast", "Number of days to be forecasted:", value = 60, min = 1, max = 730), interval = 1),
         
@@ -100,7 +104,7 @@ server <- function(input, output) {
     
     estimate_parameters <- reactive({
         date_range <- get_date_range()
-        estim <- allData %>% filter(between(date, date_range[1], date_range[2])) %>% group_by(`Country/Region`) %>% group_modify(~{optim(rep(0, 3), fn = SIR_estimation, true_infected = .x$Infected, true_recovered = .x$Recovered,
+        estim <- all_data %>% filter(between(date, date_range[1], date_range[2])) %>% group_by(`Country/Region`) %>% group_modify(~{optim(rep(0, 3), fn = SIR_estimation, true_infected = .x$Infected, true_recovered = .x$Recovered,
                                                                                  true_dead = .x$Deaths, state = c(S = max(.x$N) - 1, I = 1, R = 0, D = 0), times = 1:nrow(.x))$par %>%
                 tibble::enframe(name = "param", value = "value") %>% spread(param, value)}) %>% ungroup() %>% inner_join(countries_population, on = `Country/Region`)
         
@@ -116,11 +120,11 @@ server <- function(input, output) {
         
         sim <- estim %>% group_by(`Country/Region`) %>% group_map(function(.x, group_info){
             SIR_simulation(state = c(S = max(.x$N) - 1, I = 1, R = 0, D = 0), times = 1:forecast, func = SIR, parameters = c(.x$beta, .x$gamma, .x$delta)) %>% as.data.frame() %>%
-                mutate(`Country/Region` = group_info$`Country/Region`, date = (allData %>% filter(`Country/Region` == group_info$`Country/Region`) %>%
+                mutate(`Country/Region` = group_info$`Country/Region`, date = (all_data %>% filter(`Country/Region` == group_info$`Country/Region`) %>%
                                                                                    select(date) %>% pull() %>% min()) + 0:(forecast - 1)) %>% select(-time)
         }) %>% bind_rows()
         
-        df <- allData %>% right_join(sim, on = c("date", "Country/Region")) %>%
+        df <- all_data %>% right_join(sim, on = c("date", "Country/Region")) %>%
             transmute(date = date, `Country/Region` = `Country/Region`, Susceptible = Susceptible, "Susceptible Simulated" = S , Infected = Infected, "Infected Simulated" = I, Recovered = Recovered, "Recovered Simulated" = R,
                       Deaths = Deaths, "Deaths Simulated" = D) %>%  gather(SIR, Cases, 3:10) %>% separate(SIR, into = c("SIR", "Actual/Simulated")) %>% 
             inner_join(countries_population, on = `Country/Region`) %>%  mutate(Cases = Cases/N*1e5)

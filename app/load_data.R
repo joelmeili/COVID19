@@ -1,29 +1,32 @@
-library(tidyr)
-library(dplyr)
+# load libraries
 
-# See also https://towardsdatascience.com/create-a-coronavirus-app-using-r-shiny-and-plotly-6a6abf66091d
-baseURL = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series"
+suppressPackageStartupMessages({
+  library(tidyr)
+  library(dplyr)
+})
 
-minutesSinceLastUpdate = function(fileName) {
+base_url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series"
+
+minutes_since_last_update = function(file_name) {
   (as.numeric(as.POSIXlt(Sys.time())) -  
-     as.numeric(file.info(fileName)$ctime)) / 60
+     as.numeric(file.info(file_name)$ctime)) / 60
 }
 
-loadData = function(fileName, columnName) {
-  if(!file.exists(fileName) || 
-     minutesSinceLastUpdate(fileName) > 10) {
-    data = read.csv(file.path(baseURL, fileName), 
-                    check.names=FALSE, stringsAsFactors=FALSE) %>%
+load_data = function(file_name, column_name) {
+  if(!file.exists(file_name) || 
+     minutes_since_last_update(file_name) > 10) {
+    data = read.csv(file.path(base_url, file_name), 
+                    check.names = FALSE, stringsAsFactors = FALSE) %>%
       # select(-Lat, -Long) %>% 
-      pivot_longer(-(1:2), names_to="date", values_to=columnName)%>%
+      pivot_longer(-(1:2), names_to = "date", values_to = column_name)%>%
       mutate(
-        date=as.Date(date, format="%m/%d/%y"),
+        date = as.Date(date, format = "%m/%d/%y"),
         `Province/State`=
           if_else(`Province/State` == "", "<all>", `Province/State`)
       )
-    save(data, file=fileName)  
+    save(data, file = file_name)  
   } else {
-    load(file=fileName)
+    load(file = file_name)
   }
   return(data)
 }
