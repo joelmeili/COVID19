@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libssh2-1-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN install.r shiny
+RUN install.r shiny countrycode wbstats deSolve ggplot2 ggthemes gridExtra kableExtra tidyr dplyr 
 RUN echo "local(options(shiny.port = 3838, shiny.host = '0.0.0.0'))" > /usr/lib/R/etc/Rprofile.site
 RUN addgroup --system app \
     && adduser --system --ingroup app app
