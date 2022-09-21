@@ -1,7 +1,7 @@
 # COVID19
 An attempt to model the COVID19 data from the [Johns Hopkins Github Repository](https://github.com/CSSEGISandData) by a SIRD model for various countries such as Germany, Switzerland and the US. This Github repository contains a shiny app that estimates the model parameters and then simulates how to disease would progress based on these estimates.
 
-A live version of the shiny app can be found [here](https://joelmeili.shinyapps.io/COVID19).
+A live version of the shiny app can be found [here](https://joelmeili.shinyapps.io/COVID19_Dashboard).
 
 ## Features of the shiny app
 - estimation of the SIRD model coefficients with adjustable estimation interval and forecasting horizon
