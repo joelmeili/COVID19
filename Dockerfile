@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxt-dev \
     libssl-dev \
     libssh2-1-dev \
+    libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 RUN install.r shiny countrycode wbstats deSolve ggplot2 ggthemes gridExtra tidyr dplyr kableExtra
 RUN echo "local(options(shiny.port = 3838, shiny.host = '0.0.0.0'))" > /usr/lib/R/etc/Rprofile.site
